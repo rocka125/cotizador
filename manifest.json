@@ -1,0 +1,38 @@
+{
+  "name": "FORTRESS8 — Cotizador Profesional",
+  "short_name": "Cotizador",
+  "description": "Cotizador profesional FORTRESS8",
+  "start_url": "/cotizador/login.php",
+  "scope": "/cotizador/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0a0a",
+  "theme_color": "#e63946",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "/cotizador/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/cotizador/assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/cotizador/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/cotizador/assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

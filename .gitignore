@@ -1,0 +1,21 @@
+# Dependencias (se restauran con `composer install`)
+/vendor/
+
+# Configuración con credenciales reales — usa los *.example.php como plantilla
+/core/db.php
+/core/email_config.php
+/core/vapid_config.php
+
+# Contenido subido por usuarios (firmas, sellos, logos)
+/uploads/firmas/*
+/uploads/logos/*
+!/uploads/firmas/.gitkeep
+!/uploads/logos/.gitkeep
+
+# Logs de depuración
+/logs/*.log
+
+# Entorno / editor
+.DS_Store
+Thumbs.db
+.claude/settings.local.json

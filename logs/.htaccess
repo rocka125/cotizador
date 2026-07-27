@@ -1,0 +1,13 @@
+# Los logs de esta carpeta son de uso interno (los escribe PHP).
+# Nadie necesita leerlos por HTTP — se bloquea todo acceso directo.
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+
+# Apache 2.2 (fallback)
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>

@@ -1,0 +1,25 @@
+# Evita que se ejecute código PHP dentro de /uploads, sin importar cómo haya
+# llegado el archivo ahí. Solo se sirven como archivos estáticos (imágenes).
+
+# Apache 2.4+
+<IfModule mod_authz_core.c>
+    <FilesMatch "\.(php|php\d?|phtml|phar)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+# Apache 2.2 (fallback)
+<IfModule !mod_authz_core.c>
+    <FilesMatch "\.(php|php\d?|phtml|phar)$">
+        Order allow,deny
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Por si el hosting tiene habilitado mod_php como handler adicional
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+
+# No permitir listado de directorios
+Options -Indexes
