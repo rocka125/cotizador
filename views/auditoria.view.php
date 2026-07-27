@@ -30,6 +30,7 @@ function accion_badge(string $accion): string {
         'eliminar'      => ['color' => '#E54818', 'icon' => 'ti-trash',       'label' => 'Eliminó'],
         'cambio_estado' => ['color' => '#c084fc', 'icon' => 'ti-arrows-shuffle','label' => 'Cambió estado'],
         'ver'           => ['color' => '#94a3b8', 'icon' => 'ti-eye',         'label' => 'Vio'],
+        'enviar_email'  => ['color' => '#3b82f6', 'icon' => 'ti-mail',        'label' => 'Envió correo'],
     ];
     $d = $map[$accion] ?? ['color' => '#888', 'icon' => 'ti-point', 'label' => ucfirst($accion)];
     return "<span class=\"tl-tag\" style=\"--tc:{$d['color']}\"><i class=\"ti {$d['icon']}\" aria-hidden=\"true\"></i>{$d['label']}</span>";
@@ -40,7 +41,7 @@ function sesion_badge(string $accion): string {
         : '<span class="tl-tag" style="--tc:#E54818"><i class="ti ti-logout" aria-hidden="true"></i>Logout</span>';
 }
 function accion_color(string $accion): string {
-    $map = ['crear'=>'#4ade80','editar'=>'#F57B02','eliminar'=>'#E54818','cambio_estado'=>'#c084fc','ver'=>'#94a3b8','login'=>'#4ade80','logout'=>'#E54818'];
+    $map = ['crear'=>'#4ade80','editar'=>'#F57B02','eliminar'=>'#E54818','cambio_estado'=>'#c084fc','ver'=>'#94a3b8','enviar_email'=>'#3b82f6','login'=>'#4ade80','logout'=>'#E54818'];
     return $map[$accion] ?? '#F57B02';
 }
 function formatDetalle(string $detalleRaw): string {
@@ -52,6 +53,7 @@ function formatDetalle(string $detalleRaw): string {
         $partes[] = "Estado: {$d['estado_anterior']} → {$d['estado_nuevo']}";
     if (isset($d['cliente'])) $partes[] = 'Cliente: ' . $d['cliente'];
     if (isset($d['total']))   $partes[] = 'Total: $' . number_format((float)$d['total'], 2);
+    if (isset($d['email_destino'])) $partes[] = 'Enviado a: ' . $d['email_destino'];
     return implode(' | ', $partes);
 }
 
@@ -335,7 +337,7 @@ body::before{content:'';position:fixed;inset:0;background:
       </select>
       <select name="accion" id="f-accion">
         <option value="">Toda acción</option>
-        <?php foreach (['crear' => 'Crear', 'editar' => 'Editar', 'eliminar' => 'Eliminar', 'cambio_estado' => 'Cambio de estado'] as $val => $lbl): ?>
+        <?php foreach (['crear' => 'Crear', 'editar' => 'Editar', 'eliminar' => 'Eliminar', 'cambio_estado' => 'Cambio de estado', 'enviar_email' => 'Envió correo'] as $val => $lbl): ?>
         <option value="<?= $val ?>" <?= $ctrl->filtroAccion === $val ? 'selected' : '' ?>><?= $lbl ?></option>
         <?php endforeach; ?>
       </select>

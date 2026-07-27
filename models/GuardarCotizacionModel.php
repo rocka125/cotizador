@@ -41,16 +41,24 @@ class GuardarCotizacionModel
     /**
      * Siguiente número correlativo para el año en curso.
      * Formato: COT-YYYY-NNNN
+     *
+     * Usa un contador atómico en `contador_cotizaciones` (truco estándar de
+     * MySQL con LAST_INSERT_ID en un UPSERT) en vez de "SELECT COUNT(*)+1":
+     * ese enfoque tenía una condición de carrera — dos guardados simultáneos
+     * podían leer el mismo COUNT antes de que ninguno insertara, generando
+     * el mismo número de cotización dos veces.
      */
     public function generarNumeroCotizacion(): string
     {
         $anio = (int) date('Y');
-        $stmt = $this->db->prepare(
-            'SELECT COUNT(*)+1 AS n FROM cotizaciones WHERE YEAR(created_at) = ?'
-        );
+        $stmt = $this->db->prepare('
+            INSERT INTO contador_cotizaciones (anio, ultimo)
+            VALUES (?, LAST_INSERT_ID(1))
+            ON DUPLICATE KEY UPDATE ultimo = LAST_INSERT_ID(ultimo + 1)
+        ');
         $stmt->bind_param('i', $anio);
         $stmt->execute();
-        $n = $stmt->get_result()->fetch_assoc()['n'] ?? 1;
+        $n = (int) $this->db->insert_id;
         return "COT-$anio-" . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
     }
 
@@ -82,14 +90,14 @@ class GuardarCotizacionModel
                     vigencia_servicios = ?, lugar_entrega = ?, items = ?,
                     firma_nombre = ?, firma_puesto = ?, firma_telefono = ?,
                     firma_path = COALESCE(?, firma_path), sello_path = COALESCE(?, sello_path),
-                    subtotal = ?, iva = ?, total = ?, tipo_cambio = ?, estado = ?
+                    subtotal = ?, iva = ?, iva_porcentaje = ?, aplica_iva = ?, total = ?, tipo_cambio = ?, estado = ?
                 WHERE id = ?
             ');
             if (!$stmt) {
                 throw new RuntimeException('Error al preparar UPDATE (admin): ' . $this->db->error);
             }
             $stmt->bind_param(
-                str_repeat('s', 22) . 'ddddsi',
+                str_repeat('s', 22) . 'dddiddsi',
                 $campos['fecha'], $campos['cliente_nombre'], $campos['cliente_telefono'],
                 $campos['cliente_email'], $campos['atencion'], $campos['puesto'],
                 $campos['empresa'], $campos['telefono_o'], $campos['telefono_m'],
@@ -98,7 +106,8 @@ class GuardarCotizacionModel
                 $campos['lugar_entrega'], $campos['items_json'],
                 $campos['firma_nombre'], $campos['firma_puesto'], $campos['firma_telefono'],
                 $firmaPath, $selloPath,
-                $campos['subtotal'], $campos['iva'], $campos['total'], $campos['tipo_cambio'],
+                $campos['subtotal'], $campos['iva'], $campos['iva_porcentaje'], $campos['aplica_iva'],
+                $campos['total'], $campos['tipo_cambio'],
                 $campos['estado'],
                 $id
             );
@@ -112,14 +121,14 @@ class GuardarCotizacionModel
                     vigencia_servicios = ?, lugar_entrega = ?, items = ?,
                     firma_nombre = ?, firma_puesto = ?, firma_telefono = ?,
                     firma_path = COALESCE(?, firma_path), sello_path = COALESCE(?, sello_path),
-                    subtotal = ?, iva = ?, total = ?, tipo_cambio = ?
+                    subtotal = ?, iva = ?, iva_porcentaje = ?, aplica_iva = ?, total = ?, tipo_cambio = ?
                 WHERE id = ? AND usuario_id = ?
             ');
             if (!$stmt) {
                 throw new RuntimeException('Error al preparar UPDATE (trabajador): ' . $this->db->error);
             }
             $stmt->bind_param(
-                str_repeat('s', 22) . 'ddddii',
+                str_repeat('s', 22) . 'dddiddii',
                 $campos['fecha'], $campos['cliente_nombre'], $campos['cliente_telefono'],
                 $campos['cliente_email'], $campos['atencion'], $campos['puesto'],
                 $campos['empresa'], $campos['telefono_o'], $campos['telefono_m'],
@@ -128,13 +137,18 @@ class GuardarCotizacionModel
                 $campos['lugar_entrega'], $campos['items_json'],
                 $campos['firma_nombre'], $campos['firma_puesto'], $campos['firma_telefono'],
                 $firmaPath, $selloPath,
-                $campos['subtotal'], $campos['iva'], $campos['total'], $campos['tipo_cambio'],
+                $campos['subtotal'], $campos['iva'], $campos['iva_porcentaje'], $campos['aplica_iva'],
+                $campos['total'], $campos['tipo_cambio'],
                 $id, $usuarioId
             );
         }
 
+        // affected_rows puede ser 0 aun sin error si los valores no cambiaron
+        // respecto a la fila actual (guardar dos veces sin editar nada);
+        // el controller ya verificó que la fila existe (y su dueño) antes de
+        // llamar aquí, así que "sin error de SQL" es la señal de éxito correcta.
         $stmt->execute();
-        return $stmt->affected_rows > 0 || $stmt->errno === 0;
+        return $stmt->errno === 0;
     }
 
     /**
@@ -153,14 +167,14 @@ class GuardarCotizacionModel
                 vigencia_dias, moneda, moneda_code, tiempo_entrega, condiciones_pago,
                 vigencia_servicios, lugar_entrega,
                 firma_nombre, firma_puesto, firma_telefono, firma_path, sello_path,
-                items, subtotal, iva, total, tipo_cambio, estado
-            ) VALUES (?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?, ?,?,?,?,?, ?,?,?,?,?, ?)
+                items, subtotal, iva, iva_porcentaje, aplica_iva, total, tipo_cambio, estado
+            ) VALUES (?,?,?, ?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?, ?,?,?,?,?, ?,?,?,?,?,?,?, ?)
         ');
         if (!$stmt) {
             throw new RuntimeException('Error al preparar INSERT: ' . $this->db->error);
         }
         $stmt->bind_param(
-            'isssssssssssssssssssssssdddds',
+            'i' . str_repeat('s', 23) . 'dddidds',
             $usuarioId, $numero, $campos['fecha'],
             $campos['cliente_nombre'], $campos['cliente_telefono'], $campos['cliente_email'],
             $campos['atencion'], $campos['puesto'], $campos['empresa'],
@@ -169,7 +183,8 @@ class GuardarCotizacionModel
             $campos['condiciones_pago'], $campos['vigencia_servicios'], $campos['lugar_entrega'],
             $campos['firma_nombre'], $campos['firma_puesto'], $campos['firma_telefono'],
             $firmaPath, $selloPath,
-            $campos['items_json'], $campos['subtotal'], $campos['iva'], $campos['total'], $campos['tipo_cambio'],
+            $campos['items_json'], $campos['subtotal'], $campos['iva'], $campos['iva_porcentaje'],
+            $campos['aplica_iva'], $campos['total'], $campos['tipo_cambio'],
             $campos['estado']
         );
 

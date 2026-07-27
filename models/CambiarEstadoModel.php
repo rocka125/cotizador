@@ -34,14 +34,17 @@ class CambiarEstadoModel
     /**
      * Actualiza el estado de la cotización.
      *
-     * @return bool true si se modificó al menos una fila
+     * @return bool true si el UPDATE se ejecutó sin error de SQL.
+     *              (affected_rows puede ser 0 aun sin error si el valor ya
+     *              era el mismo; el controller ya garantiza que hay un
+     *              cambio real de estado antes de llamar aquí.)
      */
     public function actualizarEstado(int $id, string $nuevoEstado): bool
     {
         $stmt = $this->db->prepare('UPDATE cotizaciones SET estado = ? WHERE id = ?');
         $stmt->bind_param('si', $nuevoEstado, $id);
         $stmt->execute();
-        return $stmt->affected_rows > 0 || $stmt->errno === 0;
+        return $stmt->errno === 0;
     }
 
     /**

@@ -16,6 +16,14 @@ if (!isset($_SESSION['usuario'])) {
     exit;
 }
 
+// Todas las acciones de este endpoint modifican la lista de precios global
+// (afecta las cotizaciones de todos los vendedores) — solo un admin puede tocarla.
+if (($_SESSION['rol'] ?? '') !== 'admin') {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Solo un administrador puede modificar la lista de precios']);
+    exit;
+}
+
 require '../core/db.php';
 
 $raw  = file_get_contents('php://input');

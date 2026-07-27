@@ -53,6 +53,14 @@ class GuardarCotizacionController
             return;
         }
 
+        // 2a. Validación CSRF: sin este token, un sitio externo podría crear o
+        // editar cotizaciones aprovechando solo la cookie de sesión de la víctima.
+        if (!csrf_validar($data['csrf_token'] ?? null)) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Sesión inválida o expirada. Recarga la página e intenta de nuevo.']);
+            return;
+        }
+
         // 2b. Validación de campos obligatorios (defensa en profundidad:
         // el frontend ya valida esto, pero el endpoint no debe confiar en el cliente)
         $errorValidacion = $this->validarCamposObligatorios($data);
@@ -63,8 +71,9 @@ class GuardarCotizacionController
         }
 
         // 3. Sanitizar items y calcular totales
-        $items  = $this->sanitizarItems($data['items']);
-        $totales = $this->calcularTotales($items, !empty($data['aplica_iva']));
+        $items   = $this->sanitizarItems($data['items']);
+        $ivaPct  = min(100.0, max(0.0, (float)($data['iva_pct'] ?? 16)));
+        $totales = $this->calcularTotales($items, !empty($data['aplica_iva']), $ivaPct);
 
         // 4. Campos del formulario
         $campos = $this->extraerCampos($data, $items, $totales);
@@ -319,12 +328,12 @@ class GuardarCotizacionController
     {
         $limpios = [];
         foreach ($rawItems as $item) {
-            $cant      = (float)($item['cant']        ?? $item['cantidad']    ?? 0);
+            $cant      = max(0.0, (float)($item['cant']     ?? $item['cantidad']    ?? 0));
             $sku       = trim($item['sku']             ?? $item['codigo']      ?? '');
             $unidad    = trim($item['unidad']          ?? 'PZA');
             $desc      = trim($item['descripcion']     ?? $item['description'] ?? '');
-            $precio    = (float)($item['precio']       ?? $item['p_unitario']  ?? 0);
-            $descPct   = (float)($item['descuento']    ?? 0);
+            $precio    = max(0.0, (float)($item['precio']  ?? $item['p_unitario']  ?? 0));
+            $descPct   = min(100.0, max(0.0, (float)($item['descuento'] ?? 0)));
             $extendido = $cant * $precio;
             $subtotal  = $extendido * (1 - $descPct / 100);
 
@@ -346,17 +355,22 @@ class GuardarCotizacionController
 
     /**
      * Calcula subtotal, IVA y total a partir de los items sanitizados.
+     * El porcentaje de IVA es el que el vendedor configuró en pantalla
+     * (input #iva-pct), no un valor fijo — cotizador/lista_precios pueden
+     * requerir tasas distintas a 16% según el cliente.
      *
-     * @return array{subtotal:float, iva:float, total:float}
+     * @return array{subtotal:float, iva:float, total:float, iva_pct:float, aplica_iva:bool}
      */
-    private function calcularTotales(array $items, bool $aplicaIva): array
+    private function calcularTotales(array $items, bool $aplicaIva, float $ivaPct): array
     {
         $subtotal = array_sum(array_column($items, 'subtotal'));
-        $iva      = $aplicaIva ? round($subtotal * 0.16, 2) : 0.0;
+        $iva      = $aplicaIva ? round($subtotal * ($ivaPct / 100), 2) : 0.0;
         return [
-            'subtotal' => round($subtotal, 2),
-            'iva'      => $iva,
-            'total'    => round($subtotal + $iva, 2),
+            'subtotal'   => round($subtotal, 2),
+            'iva'        => $iva,
+            'total'      => round($subtotal + $iva, 2),
+            'iva_pct'    => $ivaPct,
+            'aplica_iva' => $aplicaIva,
         ];
     }
 
@@ -393,6 +407,8 @@ class GuardarCotizacionController
             'items_json'         => json_encode($items, JSON_UNESCAPED_UNICODE),
             'subtotal'           => $totales['subtotal'],
             'iva'                => $totales['iva'],
+            'iva_porcentaje'     => $totales['iva_pct'],
+            'aplica_iva'         => $totales['aplica_iva'] ? 1 : 0,
             'total'              => $totales['total'],
             'estado'             => 'pendiente', // se sobreescribe después según rol
         ];

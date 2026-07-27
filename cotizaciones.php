@@ -10,6 +10,7 @@
 
 require_once __DIR__ . '/core/Auth.php';
 require_once __DIR__ . '/core/db.php';
+require_once __DIR__ . '/core/csrf_helper.php';
 require_once __DIR__ . '/models/CotizacionModel.php';
 require_once __DIR__ . '/controllers/CotizacionController.php';
 

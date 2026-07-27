@@ -19,6 +19,12 @@
 ini_set('display_errors', '0');
 error_reporting(E_ALL);
 set_error_handler(function($errno, $errstr) {
+    // Respeta el operador "@" (p. ej. @fsockopen en EmailSender::send()):
+    // dentro del handler, error_reporting() da 0 cuando el error fue suprimido
+    // a propósito para que el código revise el valor de retorno con calma.
+    if (error_reporting() === 0) {
+        return false;
+    }
     http_response_code(500);
     echo json_encode(['error' => "PHP [{$errno}]: {$errstr}"]);
     exit;
@@ -40,7 +46,9 @@ require_once __DIR__ . '/../core/email_cotizacion_template.php';
 require_once __DIR__ . '/../core/CotizacionPdf.php';
 require_once __DIR__ . '/../models/SeguimientoModel.php';
 
-$auth = Auth::init();
+// Sin redirect: es un endpoint JSON, no debe responder con un 302 a login.php
+// cuando la sesión expiró (el fetch() del frontend espera JSON, no HTML).
+$auth = Auth::init(redirectIfUnauthenticated: false);
 
 if (!$auth->estaAutenticado()) {
     http_response_code(401);
@@ -89,24 +97,17 @@ if (!$cot) {
     echo json_encode(['error' => 'Cotización no encontrada o sin permiso']); exit;
 }
 
-// ── Generar token único para este envío ───────────────────────────────────
+// ── Generar token único para este envío (solo en memoria por ahora) ───────
+// El historial de apertura (email_opened_at / email_open_count) NO se toca
+// aquí: si el PDF falla o el SMTP falla más abajo, no debe perderse el
+// tracking de una apertura anterior real. Solo se persiste una vez que el
+// correo se envió con éxito (ver bloque tras $mailer->send()).
 $emailToken = bin2hex(random_bytes(16)); // 32 caracteres hex seguros
 
-// Guardar token en la cotización (resetea apertura anterior si se reenvía)
-$stmtToken = $conexion->prepare('
-    UPDATE cotizaciones
-    SET email_token      = ?,
-        email_opened_at  = NULL,
-        email_open_count = 0
-    WHERE id = ?
-');
-
-if ($stmtToken) {
-    $stmtToken->bind_param('si', $emailToken, $cotizacionId);
-    $stmtToken->execute();
-    $stmtToken->close();
-} else {
-    // Las columnas de tracking no existen aún — continuar sin pixel
+// Verificar que las columnas de tracking existan antes de comprometernos
+// a usar el pixel (si no existen, seguimos sin tracking).
+$chkCols = $conexion->query("SHOW COLUMNS FROM cotizaciones LIKE 'email_token'");
+if (!$chkCols || $chkCols->num_rows === 0) {
     $emailToken = null;
     error_log('[api_enviar_correo] AVISO: columnas de tracking no existen. Ejecuta migration_email_tracking.sql');
 }
@@ -192,6 +193,22 @@ if (!$enviado) {
     exit;
 }
 
+// ── El correo SÍ se envió: ahora sí resetear el tracking de apertura ──────
+// (antes de este punto, cualquier fallo de PDF/SMTP deja intacto el
+// email_token/email_opened_at/email_open_count previos).
+if ($emailToken) {
+    $stmtToken = $conexion->prepare('
+        UPDATE cotizaciones
+        SET email_token      = ?,
+            email_opened_at  = NULL,
+            email_open_count = 0
+        WHERE id = ?
+    ');
+    $stmtToken->bind_param('si', $emailToken, $cotizacionId);
+    $stmtToken->execute();
+    $stmtToken->close();
+}
+
 // ── Registro automático en seguimiento ────────────────────────────────────
 try {
     $segModel = new SeguimientoModel($conexion, $auth->usuarioId(), $auth->esAdmin());
@@ -211,10 +228,10 @@ audit_cotizacion(
     $conexion,
     $auth->usuarioId(),
     $auth->usuarioNombre(),
-    'ver',
+    'enviar_email',
     $cotizacionId,
     $numero,
-    ['accion_real' => 'enviar_email', 'email_destino' => $emailDestino]
+    ['email_destino' => $emailDestino]
 );
 
 echo json_encode([

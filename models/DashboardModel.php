@@ -49,10 +49,18 @@ class DashboardModel
         $stmt->execute();
         $list = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-        $noLeidas = 0;
-        foreach ($list as $n) {
-            if (!$n['leido']) $noLeidas++;
-        }
+        // Conteo real de no leídas, SIN el LIMIT de la lista de arriba: si
+        // solo se contara dentro de esas 15 filas, un usuario con más de 15
+        // notificaciones sin leer vería un contador menor al real, y el
+        // polling del dashboard (que sí compara contra el total real de
+        // notificaciones.php) dispararía avisos de "notificaciones nuevas"
+        // falsos con solo abrir la campanita.
+        $stmtNo = $this->db->prepare(
+            "SELECT COUNT(*) AS n FROM notificaciones WHERE usuario_id = ? AND leido = 0"
+        );
+        $stmtNo->bind_param('i', $this->usuarioId);
+        $stmtNo->execute();
+        $noLeidas = (int)($stmtNo->get_result()->fetch_assoc()['n'] ?? 0);
 
         return ['list' => $list, 'noLeidas' => $noLeidas];
     }
@@ -106,10 +114,10 @@ class DashboardModel
         $suma  = ['pendiente' => 0.0, 'aprobada' => 0.0, 'rechazada' => 0.0];
 
         foreach ($result->fetch_all(MYSQLI_ASSOC) as $row) {
-            $e = strtolower($row['estado_norm']);
-            if (in_array($e, ['aprobada', 'activa', 'aceptada']))  $k = 'aprobada';
-            elseif (in_array($e, ['rechazada', 'cancelada']))      $k = 'rechazada';
-            else                                                    $k = 'pendiente';
+            // Usa la misma fuente única de sinónimos que el resto del sistema
+            // (core/estado_helper.php) en vez de reimplementar la lista aquí,
+            // para no desincronizarse si algún día se agrega un sinónimo nuevo.
+            $k = normalizar_estado($row['estado_norm']);
             $count[$k] += intval($row['n']);
             $suma[$k]  += floatval($row['suma']);
         }
@@ -410,10 +418,7 @@ class DashboardModel
             if (!isset($mapa[$dia])) {
                 $mapa[$dia] = ['pendiente' => 0, 'aprobada' => 0, 'rechazada' => 0, 'monto' => 0.0];
             }
-            $e = strtolower($row['estado_norm']);
-            if (in_array($e, ['aprobada', 'activa', 'aceptada']))  $k = 'aprobada';
-            elseif (in_array($e, ['rechazada', 'cancelada']))      $k = 'rechazada';
-            else                                                    $k = 'pendiente';
+            $k = normalizar_estado($row['estado_norm']);
 
             $mapa[$dia][$k]      += (int)$row['n'];
             $mapa[$dia]['monto'] += (float)($row['monto'] ?? 0);
@@ -442,8 +447,8 @@ class DashboardModel
     {
         $whereEstado = match($filtro) {
             'enviadas'   => "AND s_email.id IS NOT NULL",
-            'sin_correo' => "AND s_email.id IS NULL AND c.estado IN ('pendiente','activa')",
-            default      => "AND c.estado IN ('pendiente','activa')",
+            'sin_correo' => "AND s_email.id IS NULL AND LOWER(TRIM(c.estado)) IN ('pendiente','activa')",
+            default      => "AND LOWER(TRIM(c.estado)) IN ('pendiente','activa')",
         };
 
         $whereRol = $this->esAdmin ? '' : 'AND c.usuario_id = ' . (int)$this->usuarioId;
@@ -475,7 +480,7 @@ class DashboardModel
             WHERE 1=1 {$whereEstado} {$whereRol}
             GROUP BY c.id
             ORDER BY
-                CASE c.estado WHEN 'activa' THEN 0 WHEN 'pendiente' THEN 1 ELSE 2 END,
+                CASE LOWER(TRIM(c.estado)) WHEN 'activa' THEN 0 WHEN 'pendiente' THEN 1 ELSE 2 END,
                 dias_sin_contacto DESC
             LIMIT 50
         ";
@@ -495,42 +500,42 @@ class DashboardModel
         $sql = "
             SELECT
                 -- Total activas/pendientes
-                COUNT(DISTINCT CASE WHEN c.estado IN ('pendiente','activa') THEN c.id END)
+                COUNT(DISTINCT CASE WHEN LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS total_activas,
 
                 -- Enviadas por correo: tienen email_token (nuevo) o seguimiento tipo email (legacy)
                 COUNT(DISTINCT CASE
                       WHEN (c.email_token IS NOT NULL OR se.cotizacion_id IS NOT NULL)
-                           AND c.estado IN ('pendiente','activa') THEN c.id END)
+                           AND LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS enviadas,
 
                 -- Correo abierto por el cliente (pixel de rastreo)
                 COUNT(DISTINCT CASE
                       WHEN c.email_opened_at IS NOT NULL
-                           AND c.estado IN ('pendiente','activa') THEN c.id END)
+                           AND LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS abiertos,
 
                 -- Con seguimiento activo en los últimos 3 días
                 COUNT(DISTINCT CASE
                       WHEN DATEDIFF(NOW(), COALESCE(su.ultimo, c.created_at)) <= 3
-                           AND c.estado IN ('pendiente','activa') THEN c.id END)
+                           AND LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS con_seguimiento,
 
                 -- Sin ningún contacto en más de 5 días (urgente)
                 COUNT(DISTINCT CASE
                       WHEN DATEDIFF(NOW(), COALESCE(su.ultimo, c.created_at)) > 5
-                           AND c.estado IN ('pendiente','activa') THEN c.id END)
+                           AND LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS sin_contacto,
 
                 -- Urgentes: más de 7 días sin respuesta
                 COUNT(DISTINCT CASE
                       WHEN DATEDIFF(NOW(), COALESCE(su.ultimo, c.created_at)) > 7
-                           AND c.estado IN ('pendiente','activa') THEN c.id END)
+                           AND LOWER(TRIM(c.estado)) IN ('pendiente','activa') THEN c.id END)
                     AS urgentes,
 
                 -- Cerradas (aprobadas) este mes
                 COUNT(DISTINCT CASE
-                      WHEN c.estado = 'aprobada'
+                      WHEN LOWER(TRIM(c.estado)) = 'aprobada'
                            AND MONTH(c.created_at) = MONTH(NOW())
                            AND YEAR(c.created_at)  = YEAR(NOW()) THEN c.id END)
                     AS cerradas_mes

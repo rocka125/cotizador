@@ -16,7 +16,9 @@ require_once __DIR__ . '/core/db.php';
 require_once __DIR__ . '/models/NotificacionesModel.php';
 require_once __DIR__ . '/controllers/NotificacionesController.php';
 
-$auth  = Auth::init();
+// Sin redirect: es un endpoint JSON, no debe responder con un 302 a login.php
+// cuando la sesión expiró (el fetch() del frontend espera JSON, no HTML).
+$auth  = Auth::init(redirectIfUnauthenticated: false);
 $model = new NotificacionesModel($conexion, $auth->usuarioId());
-$ctrl  = new NotificacionesController($model);
+$ctrl  = new NotificacionesController($model, $auth);
 $ctrl->handle();

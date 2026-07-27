@@ -17,7 +17,9 @@ require_once __DIR__ . '/core/auditoria_helper.php';
 require_once __DIR__ . '/models/CambiarEstadoModel.php';
 require_once __DIR__ . '/controllers/CambiarEstadoController.php';
 
-$auth  = Auth::init();
+// Sin redirect: es un endpoint JSON, no debe responder con un 302 a login.php
+// cuando la sesión expiró (el fetch() del frontend espera JSON, no HTML).
+$auth  = Auth::init(redirectIfUnauthenticated: false);
 $model = new CambiarEstadoModel($conexion);
 $ctrl  = new CambiarEstadoController($model, $auth);
 $ctrl->handle();

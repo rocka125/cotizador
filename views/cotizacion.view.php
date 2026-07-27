@@ -1189,14 +1189,14 @@ body {
                                                 <div class="lbl">Subtotal</div>
                                                 <div class="val" id="display-subtotal">$0.00</div>
                                             </div>
-                                            <div id="no-iva-row" style="text-align:right;padding:3px 0">
+                                            <div id="no-iva-row" style="text-align:right;padding:3px 0<?= $ctrl->cd['aplica_iva'] ? ';display:none' : '' ?>">
                                                 <button type="button" class="btn-add-iva" onclick="showIva()">+ Agregar IVA</button>
                                             </div>
-                                            <div id="iva-row" style="display:none">
+                                            <div id="iva-row" style="<?= $ctrl->cd['aplica_iva'] ? '' : 'display:none' ?>">
                                                 <div class="totals-row">
                                                     <div class="lbl" style="display:flex;align-items:center;justify-content:flex-end;gap:5px">
                                                         <span>IVA</span>
-                                                        <input class="iva-pct-input" id="iva-pct" type="number" min="0" max="100" value="16" oninput="recalcAll()">
+                                                        <input class="iva-pct-input" id="iva-pct" type="number" min="0" max="100" value="<?= htmlspecialchars((string)$ctrl->cd['iva_pct']) ?>" oninput="recalcAll()">
                                                         <span>%</span>
                                                         <button type="button" class="btn-iva-remove" onclick="hideIva()">quitar</button>
                                                     </div>
@@ -1696,6 +1696,7 @@ function mostrarToast(titulo, mensaje, tipo = 'info', duracionMs = 5000) {
 // window.print(). Si la cotización aún no se ha guardado (no tiene id),
 // se usa window.print() como respaldo porque todavía no existe en la BD.
 let cotizacionIdActual = <?= (int)$ctrl->cotizacionId ?>;
+const CSRF_TOKEN = <?= json_encode(csrf_token()) ?>;
 function exportarPdf() {
     if (cotizacionIdActual > 0) {
         window.open(`descargar_pdf.php?id=${cotizacionIdActual}`, '_blank');
@@ -1786,6 +1787,7 @@ async function guardarCotizacion() {
         return;
     }
     const ivaActivo = document.getElementById('iva-row').style.display !== 'none';
+    const ivaPctVal = parseFloat(document.getElementById('iva-pct').value) || 0;
     const payload = {
         id:                 parseInt(v('cotizacion_id') || '0'),
         fecha:              v('fecha'),
@@ -1805,6 +1807,8 @@ async function guardarCotizacion() {
         vigencia_servicios: v('v_servicios'),
         lugar_entrega:      v('l_entrega'),
         aplica_iva:         ivaActivo,
+        iva_pct:            ivaPctVal,
+        csrf_token:         CSRF_TOKEN,
         firma_nombre:       v('f_nombre'),
         firma_puesto:       v('f_puesto'),
         firma_telefono:     v('f_tel'),

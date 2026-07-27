@@ -71,23 +71,34 @@ class AuditoriaController
 
     private function loadViewData(): void
     {
-        $offset = ($this->pagina - 1) * self::POR_PAGINA;
-
         $this->stats    = $this->model->getStats();
         $this->usuarios = $this->model->getUsuarios();
 
-        // Sesiones — solo si la sección visible las incluye
+        // Primero los conteos (baratos), para poder acotar la página pedida
+        // antes de pedir las filas — una "pagina" en la URL mayor al total
+        // disponible (bookmark viejo, o cambiar el filtro a uno con menos
+        // resultados) ya no debe caer en un OFFSET vacío.
         if ($this->filtroTipo !== 'cotizaciones') {
             $this->totalSesiones = $this->model->contarSesiones($this->filtroUsuario);
-            $this->totalPagSes   = (int) ceil($this->totalSesiones / self::POR_PAGINA);
-            $this->sesiones      = $this->model->getSesiones($this->filtroUsuario, self::POR_PAGINA, $offset);
+            $this->totalPagSes   = max(1, (int) ceil($this->totalSesiones / self::POR_PAGINA));
         }
-
-        // Cotizaciones — solo si la sección visible las incluye
         if ($this->filtroTipo !== 'sesiones') {
             $this->totalAudits = $this->model->contarAuditorias($this->filtroUsuario, $this->filtroAccion);
-            $this->totalPagAud = (int) ceil($this->totalAudits / self::POR_PAGINA);
-            $this->auditorias  = $this->model->getAuditorias($this->filtroUsuario, $this->filtroAccion, self::POR_PAGINA, $offset);
+            $this->totalPagAud = max(1, (int) ceil($this->totalAudits / self::POR_PAGINA));
+        }
+
+        // Ambas secciones comparten el mismo número de página en la URL:
+        // se acota contra la más larga de las que estén visibles, para no
+        // cortar de más la que tenga más páginas.
+        $maxPaginas   = max($this->totalPagSes, $this->totalPagAud);
+        $this->pagina = min($this->pagina, $maxPaginas);
+        $offset       = ($this->pagina - 1) * self::POR_PAGINA;
+
+        if ($this->filtroTipo !== 'cotizaciones') {
+            $this->sesiones = $this->model->getSesiones($this->filtroUsuario, self::POR_PAGINA, $offset);
+        }
+        if ($this->filtroTipo !== 'sesiones') {
+            $this->auditorias = $this->model->getAuditorias($this->filtroUsuario, $this->filtroAccion, self::POR_PAGINA, $offset);
         }
     }
 

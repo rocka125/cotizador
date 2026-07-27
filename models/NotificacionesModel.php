@@ -54,7 +54,12 @@ class NotificacionesModel
     /**
      * Marca una notificación puntual como leída (solo si pertenece al usuario).
      *
-     * @return bool true si se actualizó algún registro
+     * @return bool true si la notificación es del usuario (ya sea que este
+     *              UPDATE la haya marcado leída ahora, o que ya lo estuviera
+     *              antes — idempotente); false si el id no existe o no es
+     *              suya (affected_rows por sí solo no distingue estos casos,
+     *              porque MySQL no cuenta como "afectada" una fila cuyo
+     *              valor no cambió).
      */
     public function marcarLeida(int $id): bool
     {
@@ -62,7 +67,14 @@ class NotificacionesModel
         $stmt->bind_param("ii", $id, $this->usuarioId);
         $stmt->execute();
 
-        return $stmt->affected_rows > 0;
+        if ($stmt->affected_rows > 0) {
+            return true;
+        }
+
+        $chk = $this->db->prepare("SELECT 1 FROM notificaciones WHERE id = ? AND usuario_id = ?");
+        $chk->bind_param("ii", $id, $this->usuarioId);
+        $chk->execute();
+        return $chk->get_result()->num_rows > 0;
     }
 
     /**

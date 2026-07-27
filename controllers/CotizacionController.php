@@ -110,6 +110,8 @@ class CotizacionController
             'f_tel'       => $raw['firma_telefono']       ?? '',
             'firma_path'  => $raw['firma_path']           ?? '',
             'sello_path'  => $raw['sello_path']           ?? '',
+            'aplica_iva'  => !empty($raw['aplica_iva']),
+            'iva_pct'     => $raw['iva_porcentaje']       ?? 16,
         ];
     }
 

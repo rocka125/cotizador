@@ -38,7 +38,12 @@ class CambiarEstadoController
      */
     public function handle(): void
     {
-        // 1. Solo admin
+        // 1. Autenticación y rol
+        if (!$this->auth->estaAutenticado()) {
+            http_response_code(401);
+            echo json_encode(['error' => 'No autorizado']);
+            return;
+        }
         if (!$this->auth->esAdmin()) {
             http_response_code(403);
             echo json_encode(['error' => 'No autorizado']);
@@ -66,6 +71,14 @@ class CambiarEstadoController
         $duenoId        = intval($cot['usuario_id']);
         $usuarioId      = $this->auth->usuarioId();
         $nombreActor    = $this->auth->usuarioNombre();
+
+        // 3b. Idempotencia: si el estado ya es el solicitado (doble clic,
+        // resubmit), no hay nada que cambiar — evita auditoría y
+        // notificaciones duplicadas para una transición que no ocurrió.
+        if ($nuevoEstado === $estadoAnterior) {
+            echo json_encode(['ok' => true, 'estado' => $nuevoEstado, 'sin_cambios' => true]);
+            return;
+        }
 
         // 4. Actualizar estado
         $ok = $this->model->actualizarEstado($id, $nuevoEstado);

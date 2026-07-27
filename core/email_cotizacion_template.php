@@ -122,6 +122,7 @@ function buildEmailCotizacion(
     $iva         = (float)($cot['iva']      ?? 0);
     $total       = (float)($cot['total']    ?? 0);
     $aplicaIva   = !empty($cot['aplica_iva']) && $iva > 0;
+    $ivaPct      = (float)($cot['iva_porcentaje'] ?? 16);
 
     $empNombre   = htmlspecialchars($empresa['nombre']    ?? 'Fortress8');
     $empEmail    = htmlspecialchars($empresa['email']     ?? '');
@@ -212,7 +213,7 @@ function buildEmailCotizacion(
     if ($aplicaIva) {
         $totalesHtml .= '
         <tr>
-            <td colspan="5" style="text-align:right;padding:6px 10px;font-size:12px;color:#6b7280;">IVA (16%)</td>
+            <td colspan="5" style="text-align:right;padding:6px 10px;font-size:12px;color:#6b7280;">IVA (' . number_format($ivaPct, 0) . '%)</td>
             <td style="text-align:right;padding:6px 10px;font-size:12px;">'
             . $sym . number_format($iva, 2, '.', ',') . ' ' . $moneda . '</td>
         </tr>';

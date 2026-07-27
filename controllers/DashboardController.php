@@ -63,8 +63,17 @@ class DashboardController
         require_once __DIR__ . '/../core/auditoria_helper.php';
         header('Content-Type: application/json');
 
+        // Mismo manejador defensivo que ListaCotizacionesController::handleEliminar():
+        // sin esto, un warning de PHP en medio del flujo imprimiría texto suelto
+        // antes del json_encode() final y rompería el JSON que espera el frontend.
+        set_error_handler(function($errno, $errstr) {
+            echo json_encode(['ok' => false, 'error' => "PHP [$errno]: $errstr"]);
+            exit;
+        });
+
         $id = intval($_POST['id'] ?? 0);
         if ($id <= 0) {
+            restore_error_handler();
             echo json_encode(['ok' => false, 'error' => 'ID inválido']);
             return;
         }
@@ -72,6 +81,11 @@ class DashboardController
         $datosAuditoria = $this->model->getCotizacionParaAuditoria($id);
         $numCot         = $datosAuditoria['numero_cotizacion'] ?? '';
         $ok             = $this->model->eliminarCotizacion($id);
+
+        // A partir de aquí la fila YA se borró (si $ok=true) — restauramos el
+        // manejador normal para que un warning en audit/notify no aborte la
+        // respuesta con "ok:false" cuando el borrado sí funcionó.
+        restore_error_handler();
 
         if ($ok && $datosAuditoria) {
             $db = $GLOBALS['conexion'];

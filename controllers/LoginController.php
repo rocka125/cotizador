@@ -36,42 +36,45 @@ class LoginController
             return;
         }
 
-        require_once __DIR__ . '/../core/login_rate_limit.php';
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        $rateLimit = new LoginRateLimit($GLOBALS['conexion']);
-
-        if ($rateLimit->estaBloqueada($ip)) {
-            $min = max(1, $rateLimit->minutosRestantes($ip));
-            $this->error = "Demasiados intentos fallidos. Intenta de nuevo en $min minuto(s).";
-            return;
-        }
-
-        $this->correo    = trim($_POST['correo']   ?? '');
-        $password        = $_POST['password']      ?? '';
+        $this->correo = trim($_POST['correo']  ?? '');
+        $password     = $_POST['password']     ?? '';
 
         if ($this->correo === '' || $password === '') {
             $this->error = 'Por favor completa todos los campos';
             return;
         }
 
-        $usuario = $this->model->getUsuarioPorCorreo($this->correo);
+        require_once __DIR__ . '/../core/login_rate_limit.php';
+        $ip        = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $rateLimit = new LoginRateLimit($GLOBALS['conexion']);
 
-        if (!$usuario) {
-            $rateLimit->registrarFallo($ip);
-            // Mensaje genérico a propósito: no revelar si el correo existe o no.
-            $this->error = 'Correo o contraseña incorrectos';
-            return;
-        }
+        // Todo el tramo de verificación se serializa por (ip, correo) para
+        // que ráfagas de peticiones paralelas no se salten el límite de intentos.
+        $rateLimit->ejecutarConLock($ip, $this->correo, function (bool $lockOk) use ($rateLimit, $ip, $password) {
+            if (!$lockOk) {
+                $this->error = 'Demasiados intentos simultáneos. Intenta de nuevo en un momento.';
+                return;
+            }
 
-        if (!password_verify($password, $usuario['password'])) {
-            $rateLimit->registrarFallo($ip);
-            $this->error = 'Correo o contraseña incorrectos';
-            return;
-        }
+            if ($rateLimit->estaBloqueada($ip, $this->correo)) {
+                $min = max(1, $rateLimit->minutosRestantes($ip, $this->correo));
+                $this->error = "Demasiados intentos fallidos. Intenta de nuevo en $min minuto(s).";
+                return;
+            }
 
-        // Credenciales correctas — limpiar contador y iniciar sesión
-        $rateLimit->limpiar($ip);
-        $this->iniciarSesion($usuario);
+            $usuario = $this->model->getUsuarioPorCorreo($this->correo);
+
+            if (!$usuario || !password_verify($password, $usuario['password'])) {
+                $rateLimit->registrarFallo($ip, $this->correo);
+                // Mensaje genérico a propósito: no revelar si el correo existe o no.
+                $this->error = 'Correo o contraseña incorrectos';
+                return;
+            }
+
+            // Credenciales correctas — limpiar contador y iniciar sesión
+            $rateLimit->limpiar($ip, $this->correo);
+            $this->iniciarSesion($usuario);
+        });
     }
 
     // ── Privados ──────────────────────────────────────────────────────────────

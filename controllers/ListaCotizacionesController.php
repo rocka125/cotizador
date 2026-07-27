@@ -54,6 +54,7 @@ class ListaCotizacionesController
 
         $id = intval($_POST['id'] ?? 0);
         if ($id <= 0) {
+            restore_error_handler();
             echo json_encode(['ok' => false, 'error' => 'ID inválido']);
             return;
         }
@@ -62,6 +63,12 @@ class ListaCotizacionesController
         $numCot         = $datosAuditoria['numero_cotizacion'] ?? '';
 
         $ok = $this->model->eliminarCotizacion($id);
+
+        // A partir de aquí la fila YA se borró (si $ok=true) — restauramos el
+        // manejador de errores normal para que un warning/notice dentro de
+        // audit_cotizacion()/notificar_admins() (p. ej. algo en push_helper.php)
+        // no aborte la respuesta con "ok:false" cuando el borrado sí funcionó.
+        restore_error_handler();
 
         if ($ok && $datosAuditoria) {
             $db = $GLOBALS['conexion'];
@@ -97,13 +104,19 @@ class ListaCotizacionesController
 
     private function loadViewData(): void
     {
-        $this->busqueda     = trim($_GET['buscar'] ?? '');
-        $this->paginaActual = max(1, intval($_GET['pagina'] ?? 1));
-        $offset             = ($this->paginaActual - 1) * self::POR_PAGINA;
+        $this->busqueda = trim($_GET['buscar'] ?? '');
 
         $this->totalRegistros = $this->model->contarCotizaciones($this->busqueda);
-        $this->totalPaginas   = (int) ceil($this->totalRegistros / self::POR_PAGINA);
-        $this->cotizaciones   = $this->model->getCotizaciones($this->busqueda, self::POR_PAGINA, $offset);
+        $this->totalPaginas   = max(1, (int) ceil($this->totalRegistros / self::POR_PAGINA));
+
+        // Clamp: una página fuera de rango (bookmark viejo, o cambiar el
+        // filtro de búsqueda a uno con menos resultados) ya no debe caer en
+        // un OFFSET vacío que muestre "sin resultados" habiendo resultados.
+        $paginaSolicitada    = max(1, intval($_GET['pagina'] ?? 1));
+        $this->paginaActual = min($paginaSolicitada, $this->totalPaginas);
+
+        $offset             = ($this->paginaActual - 1) * self::POR_PAGINA;
+        $this->cotizaciones = $this->model->getCotizaciones($this->busqueda, self::POR_PAGINA, $offset);
         $this->showSuccessToast = isset($_GET['success']);
     }
 }

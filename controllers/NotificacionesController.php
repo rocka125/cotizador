@@ -14,10 +14,12 @@
 class NotificacionesController
 {
     private NotificacionesModel $model;
+    private Auth                $auth;
 
-    public function __construct(NotificacionesModel $model)
+    public function __construct(NotificacionesModel $model, Auth $auth)
     {
         $this->model = $model;
+        $this->auth  = $auth;
     }
 
     /**
@@ -25,6 +27,12 @@ class NotificacionesController
      */
     public function handle(): void
     {
+        if (!$this->auth->estaAutenticado()) {
+            http_response_code(401);
+            echo json_encode(['error' => 'No autorizado']);
+            return;
+        }
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $this->handlePost();
             return;
@@ -43,8 +51,8 @@ class NotificacionesController
                 echo json_encode(['error' => 'Parámetros inválidos']);
                 return;
             }
-            $this->model->marcarLeida($id);
-            echo json_encode(['ok' => true]);
+            $actualizada = $this->model->marcarLeida($id);
+            echo json_encode(['ok' => $actualizada]);
             return;
         }
 

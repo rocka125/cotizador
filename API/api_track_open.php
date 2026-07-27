@@ -249,6 +249,12 @@ function detectarProxy(string $userAgent, string $ip): bool
         'Sendgrid', 'AppleMailPrivacyProxy', 'Twitterbot',
         'facebookexternalhit', 'LinkedInBot', 'Slackbot',
         'Baiduspider', 'msnbot',
+        // Gateways corporativos de seguridad de correo: descargan las imágenes
+        // al escanear el mensaje, antes de que el humano lo abra. Sin esto,
+        // el escaneo automático marca la cotización como "abierta por el
+        // cliente" de forma permanente (email_opened_at solo se fija una vez).
+        'Mimecast', 'Proofpoint', 'Barracuda', 'IronPort',
+        'MessageLabs', 'ATP Safe Links', 'SafeLinks',
     ];
     foreach ($uaPatterns as $pattern) {
         if (stripos($userAgent, $pattern) !== false) return true;
